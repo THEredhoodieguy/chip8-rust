@@ -6,11 +6,10 @@ impl Ram {
 
     pub fn new() -> Ram {
         let mut ram = Ram {
-            mem: [0; 4096]
+            mem: [0; 4096],
         };
 
         ram.init_sprites();
-        println!("RAM: {:?}", ram.mem.to_vec());
 
         ram
     }

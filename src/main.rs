@@ -3,6 +3,7 @@ use std::io::Read;
 use crate::chip8::Chip8;
 
 mod ram;
+mod cpu;
 mod chip8;
 
 fn main() {
@@ -14,4 +15,8 @@ fn main() {
 
     let mut chip8 = Chip8::new();
     chip8.load_rom(&data);
+
+    loop {
+        chip8.run_instruction();
+    }
 }
