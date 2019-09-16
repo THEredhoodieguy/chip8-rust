@@ -95,13 +95,13 @@ fn main() {
         //put key presses into emulator
         let chip8_key = get_chip8_keycode_for(key);
         if chip8_key.is_some()
-            || Instant::now() - last_key_update_time >= Duration::from_millis(200) {
+            || Instant::now() - last_key_update_time >= Duration::from_millis(100) {
                 last_key_update_time = Instant::now();
                 chip8.set_key_pressed(chip8_key);
         }
 
         //run instructions on the emulator
-        if Instant::now() - last_instruction_run_time > Duration::from_millis(2) {
+        if Instant::now() - last_instruction_run_time > Duration::from_micros(500) {
             chip8.run_instruction();
             last_instruction_run_time = Instant::now();
         }
