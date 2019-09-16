@@ -1,7 +1,7 @@
 use rand;
 use rand::distributions::{IndependentSample, Range};
 
-use crate::ram::Ram;
+use crate::bus::Bus;
 
 pub const PROGRAM_START : u16 = 0x200;
 
@@ -31,15 +31,15 @@ impl CPU {
         
     }
 
-    pub fn run_instruction(&mut self, ram: &mut Ram) {
-        let hi: u8 = ram.read_byte(self.pc);
-        let low: u8 = ram.read_byte(self.pc + 1);
+    pub fn run_instruction(&mut self, bus: &mut Bus) {
+        let hi: u8 = bus.ram_read_byte(self.pc);
+        let low: u8 = bus.ram_read_byte(self.pc + 1);
 
         let instruction: u16 = (hi as u16) << 8 | (low as u16);
 
 
-        println!("Instruction read: {:#X} hi:{:#X} low:{:#X}", instruction, hi, low);
-        println!("Instruction after operation: {:#X}", (instruction & 0xF000) >> 12);
+        //println!("Instruction read: {:#X} hi:{:#X} low:{:#X}", instruction, hi, low);
+        //println!("Instruction after operation: {:#X}", (instruction & 0xF000) >> 12);
         if instruction == 0 {
             panic!();
         }
@@ -50,20 +50,24 @@ impl CPU {
         let x   = ((instruction & 0x0F00) >> 8) as u8;
         let y   = ((instruction & 0x00F0) >> 4) as u8;
 
-        match instruction & 0xF000 {
+        match (instruction & 0xF000) >> 12 {
             0x0 => {
                 match instruction {
                     0x00E0 => {
                         //CLS
                         //clear the screen
-                        //TODO
+                        bus.clear_screen();
+                        self.pc += 2;
                     }
                     0x00EE => {
                         //RET
                         self.pc = self.stack[self.sp as usize];
                         self.sp -= 1;
                     }
-                    _ => panic!("Instruction not recognized: {:#X}", instruction)
+                    _ => panic!(
+                        "0x00 Instruction not recognized: {:#X}", 
+                        instruction
+                        )
                 }
             }
             0x1 => {
@@ -73,7 +77,7 @@ impl CPU {
             0x2 => {
                 //CALL addr
                 self.sp += 1;
-                self.stack[self.sp as usize] = self.pc;
+                self.stack[self.sp as usize] = self.pc + 2;
                 self.pc = nnn;
             }
             0x3 => {
@@ -107,7 +111,7 @@ impl CPU {
             }
             0x7 => {
                 //ADD Vx, byte
-                self.vx[x as usize] += kk;
+                self.vx[x as usize] = self.vx[x as usize].wrapping_add(kk);
                 self.pc += 2;
             }
             0x8 => {
@@ -131,7 +135,7 @@ impl CPU {
                     0x4 => {
                         //ADD Vx, Vy
                         let sum: u16 = (self.vx[x as usize] + self.vx[y as usize]) as u16;
-                        self.vx[x as usize] = sum as u8;
+                        self.vx[x as usize] = (sum & 0x0000FFFF) as u8;
                         if sum > 0xFF {
                             self.vx[0xF as usize] = 1;
                         }
@@ -194,17 +198,29 @@ impl CPU {
             }
             0xD => {
                 //DRW Vx, Vy, nibble
-                //TODO
+                self.debug_draw_sprite(bus, n, self.vx[x as usize], self.vx[y as usize]);
+                self.pc += 2;
             }
             0xE => {
                 match kk {
                     0x9E => {
                         //SKP Vx
                         //TODO
+                        let key = self.vx[x as usize];
+                        if bus.is_key_pressed(key) {
+                            self.pc += 4;
+                        } else {
+                            self.pc += 2;
+                        }
                     }
                     0xA1 => {
                         //SKNP Vx
-                        //TODO
+                        let key = self.vx[x as usize];
+                        if !bus.is_key_pressed(key) {
+                            self.pc += 4;
+                        } else {
+                            self.pc += 2;
+                        }
                     }
                     _ => panic!("0xE instruction not recognized: {:#X}", instruction)
                 };
@@ -214,45 +230,86 @@ impl CPU {
                 match kk {
                     0x07 => {
                         //LD Vx, DT
-                        self.vx[x as usize] = self.delay;
+                        self.vx[x as usize] = bus.get_delay_timer();
+                        self.pc += 2;
                     }
                     0x0A => {
                         //LD Vx, K
-                        //TODO
+                        if let Some(val) = bus.get_key_pressed() {
+                            self.vx[x as usize] = val;
+                            self.pc += 2;
+                        }
                     }
                     0x15 => {
                         //LD DT, Vx
-                        self.delay = self.vx[x as usize];
+                        bus.set_delay_timer(self.vx[x as usize]);
+                        self.pc += 2;
                     }
                     0x18 => {
                         //LD ST, Vx
                         self.sound = self.vx[x as usize];
+                        self.pc += 2;
                     }
                     0x1E => {
                         //ADD I, Vx
                         self.i += self.vx[x as usize] as u16;
+                        self.pc += 2;
                     }
                     0x29 => {
                         //LD F, Vx
                         self.i = self.vx[x as usize] as u16 * 5;
+                        self.pc += 2;
                     }
                     0x33 => {
                         //LD B, Vx
-                        //TODO
+                        let hundreds: u8 = (self.vx[x as usize] / 100) as u8;
+                        let tens: u8 = ((self.vx[x as usize] % 100) / 10) as u8;
+                        let ones: u8 = (self.vx[x as usize] % 10) as u8;
+                        //write 100s digit
+                        bus.ram_write_byte(self.i, hundreds);
+                        //write 10s digit
+                        bus.ram_write_byte(self.i+1, tens);
+                        //write 1s digit
+                        bus.ram_write_byte(self.i+2, ones);
+                        self.pc += 2;
                     }
                     0x55 => {
                         //LD [I], Vx
-                        //TODO
+                        for index in 0..x + 1 {
+                            let value = self.vx[index as usize];
+                            bus.ram_write_byte(self.i + (index as u16), value);
+                        }
+                        //self.i += x as u16 + 1;
+                        self.pc += 2;
                     }
                     0x65 => {
                         //LD Vx, [I]
-                        //TODO
+                        for index in 0..x + 1 {
+                            let value = bus.ram_read_byte(self.i + (index as u16));
+                            self.vx[0+index as usize] = value;
+                        }
+                        self.pc += 2;
                     }
                     _ => panic!("0xF instruction not recognized: {:#X}", instruction)
                 };
-                self.pc += 2;
             }
             _ => panic!("Unrecognized instruction {:#X}", instruction)
+        }
+    }
+
+    fn debug_draw_sprite(&mut self, bus: &mut Bus, n: u8, x: u8, y: u8) {
+        let mut should_set_vf = false;
+        for sprite_y in 0..n {
+            let b = bus.ram_read_byte(self.i + sprite_y as u16);
+            if bus.debug_draw_byte(b, x, y + sprite_y) {
+                should_set_vf = true;
+            }
+        }
+
+        if should_set_vf {
+            self.vx[0xf as usize] = 1;
+        } else {
+            self.vx[0xf as usize] = 0;
         }
     }
 }
