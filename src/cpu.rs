@@ -134,8 +134,8 @@ impl CPU {
                     }
                     0x4 => {
                         //ADD Vx, Vy
-                        let sum: u16 = (self.vx[x as usize] + self.vx[y as usize]) as u16;
-                        self.vx[x as usize] = (sum & 0x0000FFFF) as u8;
+                        let sum: u16 = self.vx[x as usize] as u16 + self.vx[y as usize] as u16;
+                        self.vx[x as usize] = sum as u8;
                         if sum > 0xFF {
                             self.vx[0xF as usize] = 1;
                         }
