@@ -279,7 +279,6 @@ impl CPU {
                             let value = self.vx[index as usize];
                             bus.ram_write_byte(self.i + (index as u16), value);
                         }
-                        //self.i += x as u16 + 1;
                         self.pc += 2;
                     }
                     0x65 => {
